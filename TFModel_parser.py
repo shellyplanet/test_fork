@@ -78,31 +78,51 @@ def main(_):
         writer = tf.summary.FileWriter(FLAGS.tb_path, graph = g)
 
     from tensorflow.python.framework import graph_util
+    import numpy as np
     operations = g.get_operations()
     strOpNames = ""
-    strFlopsInfo = ""
     i = 1
     for op in operations:
         strOpNames += "Operation:" + op.name + "\n"
 
     with open(FLAGS.dump_nodes_path, 'w') as file:
         file.write(strOpNames)
-    with open(FLAGS.dump_flops_path, 'w') as file:
-        file.write(strFlopsInfo)
     
     lstNode = [n.name for n in g.as_graph_def().node]
     strNodeNames = ""
     for node in lstNode:
         strNodeNames += node + "\n"
+    with open(FLAGS.dump_ops_path, 'w') as file:
+        file.write(strNodeNames)
+
+    strFlopsInfo = "Layer, Filter Num, Filter H, Filter W, Params\n"
     lstConv2D = [n for n in g.as_graph_def().node if n.op=='Conv2D']
     for node in lstConv2D:
         print('[_calc_conv_flops]node.name', node.name)
+        strFlopsInfo += node.name + ","
         input_shape = graph_util.tensor_shape_from_node_def_name(g, node.input[0])
         print('[_calc_conv_flops]input_shape.as_list()', input_shape.as_list())
         print('[_calc_conv_flops]node.input[0]', input_shape)
-    with open(FLAGS.dump_ops_path, 'w') as file:
-        file.write(strNodeNames)
-        
+        filter_shape = graph_util.tensor_shape_from_node_def_name(g, node.input[1])
+        print('[_calc_conv_flops]node.input[1]', filter_shape)
+        output_shape = graph_util.tensor_shape_from_node_def_name(g, node.name)
+        print('[_calc_conv_flops]output_shape', output_shape)
+        filter_height = int(filter_shape[0])
+        filter_width = int(filter_shape[1])
+        filter_in_depth = int(filter_shape[2])
+        filter_num = int(filter_shape[3])
+        params = filter_in_depth * filter_height * filter_width * filter_num
+        print('[_calc_conv_flops]h:%d w:%d d:%d n:%d'% (filter_height, filter_width, filter_in_depth, filter_num))
+        strFlopsInfo += "," + str(filter_height) + "," + str(filter_width) + "," + str(params) + "\n"
+        print('[_calc_conv_flops]params:%d'% params)
+        print('[_calc_conv_flops]output_shape.as_list()', output_shape.as_list())
+        output_count = np.prod(output_shape.as_list()[1:], dtype=np.int64)
+        output_dim = output_shape.as_list()[1:2]
+        #output_count = np.prod(output_shape.as_list(), dtype=np.int64)
+        print('[_calc_conv_flops]output_count', output_shape.as_list()[1:])    
+    with open(FLAGS.dump_flops_path, 'w') as file:
+        file.write(strFlopsInfo)
+                
     # parse weights
     graph_nodes=[n for n in g.as_graph_def().node]
     #wts = [n for n in graph_nodes if n.op=='Const']
